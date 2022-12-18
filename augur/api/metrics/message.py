@@ -29,30 +29,32 @@ def messages(repo_group_id, repo_id=None, period='day', begin_date=None, end_dat
     if not end_date:
         end_date = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
 
-    if repo_id:
+    if not repo_id:
         messages = s.sql.text("""
             SELECT
-	          COUNT(msg_id) AS msg_count
-	          FROM message
-	          WHERE msg_timestamp BETWEEN :begin_date AND :end_date
-	          AND repo_id = :repo_id
-	          GROUP BY repo_id;
+                repo_id,
+                COUNT(msg_id) AS msg_count
+            FROM
+                message
+            WHERE msg_timestamp BETWEEN :begin_date AND :end_date
+            AND repo_id IN
+                (SELECT repo_id FROM repo WHERE repo_group_id = :repo_group_id)
+            GROUP BY repo_id;
         """)
 
-        results = pd.read_sql(messages, engine, params={'repo_id': repo_id, 'period': period,
+        results = pd.read_sql(messages, engine, params={'repo_group_id': repo_group_id, 'period': period,
                                                                 'begin_date': begin_date, 'end_date': end_date})
     else:
         messages = s.sql.text("""
             SELECT
-	          repo_id,
-	          COUNT(msg_id) AS msg_count
-	          FROM message
-	          WHERE msg_timestamp BETWEEN :begin_date AND :end_date
-            AND repo_id IN
-                (SELECT repo_id FROM repo WHERE repo_group_id = :repo_group_id)
-	          GROUP BY repo_id;
+                COUNT(msg_id) AS msg_count
+            FROM
+                message
+            WHERE msg_timestamp BETWEEN :begin_date AND :end_date
+            AND repo_id = :repo_id
+            GROUP BY repo_id;
         """)
 
-        results = pd.read_sql(messages, engine, params={'repo_group_id': repo_group_id, 'period': period,
+        results = pd.read_sql(messages, engine, params={'repo_id': repo_id, 'period': period,
                                                                 'begin_date': begin_date, 'end_date': end_date})
     return results

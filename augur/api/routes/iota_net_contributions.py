@@ -7,7 +7,7 @@ import json
 AUGUR_API_VERSION = 'api/unstable'
 
 def create_routes(server):
-    @server.app.route('/{}/iota/get_net_contributions'.format(AUGUR_API_VERSION), methods=["GET"])
+    @server.app.route('/{}/iota/get-net-contributions'.format(AUGUR_API_VERSION), methods=["GET"])
     def get_net_contributions():
         repo_info_sql = s.sql.text("""
             SELECT
