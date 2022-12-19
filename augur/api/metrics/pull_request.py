@@ -755,7 +755,7 @@ def pull_request_average_commit_counts(repo_group_id, repo_id=None, group_by='mo
                 'begin_date': begin_date, 'end_date': end_date})
     if not repo_id:
         pr_avg_commit_counts = pr_all.groupby(['merged_status', 'repo_id', 'repo_name', 'repo_group_id', 'repo_group_name'] + time_group_bys).mean().reset_index()[['merged_status', 'repo_id', 'repo_name', 'repo_group_id', 'repo_group_name'] + time_group_bys + ['average_commits_per_pull_request']]
-    else:        
+    else:
         pr_avg_commit_counts = pr_all.groupby(['merged_status'] + time_group_bys).mean().reset_index()[time_group_bys + ['merged_status', 'average_commits_per_pull_request']]
 
     return pr_avg_commit_counts
@@ -914,7 +914,7 @@ def pull_request_average_event_counts(repo_group_id, repo_id=None, group_by='mon
 
     count_names = ['assigned_count', 'review_requested_count', 'labeled_count', 'unlabeled_count', 'subscribed_count', 'mentioned_count', 'referenced_count', 'closed_count', 'head_ref_force_pushed_count', 'head_ref_deleted_count', 'milestoned_count', 'merged_count', 'comment_count']
     average_count_names = []
-    for name in count_names.copy(): 
+    for name in count_names.copy():
         average_count_names.append('average_' + name)
 
     if not repo_id:
@@ -1113,17 +1113,71 @@ def pull_request_merged_status_counts(repo_group_id, repo_id=None, begin_date='1
             AND pr_closed_at::date <= :end_date ::date
         """)
 
-    pr_all = pd.read_sql(pr_all_sql, engine, params={'repo_group_id': repo_group_id, 
+    pr_all = pd.read_sql(pr_all_sql, engine, params={'repo_group_id': repo_group_id,
         'repo_id': repo_id, 'begin_date': begin_date, 'end_date': end_date})
 
     if not repo_id:
-         pr_merged_counts = pr_all.groupby(['merged_status', 'repo_id', 'repo_name', 'repo_group_id', 'repo_group_name'] + time_group_bys).count().reset_index()[['merged_status', 'repo_id', 'repo_name', 'repo_group_id', 'repo_group_name'] + time_group_bys + ['pull_request_count']]
+        pr_merged_counts = pr_all.groupby(['merged_status', 'repo_id', 'repo_name', 'repo_group_id', 'repo_group_name'] + time_group_bys).count().reset_index()[['merged_status', 'repo_id', 'repo_name', 'repo_group_id', 'repo_group_name'] + time_group_bys + ['pull_request_count']]
     else:
         pr_merged_counts = pr_all.groupby(['merged_status'] + time_group_bys).count().reset_index()[time_group_bys + ['merged_status', 'pull_request_count']]
-    
+
     return pr_merged_counts
 
+@register_metric()
+def pull_request_ratio_merged_to_closed(repo_group_id, repo_id=None):
+    """
+    Ratio of merged to closed pull requests
 
+    :param repo_group_id: The repository's repo_group_id
+    :param repo_id: The repository's repo_id, defaults to None
+    """
+
+    if not repo_id:
+        pr_all_sql = s.sql.text("""
+        SELECT
+            a.repo_id, 
+            CAST(merged AS FLOAT) / NULLIF(CAST(closed AS FLOAT),0) AS ratio_merged_to_closed
+            FROM
+                (SELECT 
+                    repo_id, COUNT(pr_merged_at) AS merged  
+                    FROM augur_data.pull_requests
+                    WHERE pr_merged_at IS NOT NULL
+                    GROUP BY repo_id) a
+                INNER JOIN
+                (SELECT
+                    repo_id, COUNT(pr_closed_at) AS closed
+                    FROM augur_data.pull_requests
+                    WHERE pr_merged_at IS NULL
+                    GROUP BY repo_id) b
+                ON a.repo_id = b.repo_id
+        WHERE a.repo_id IN (SELECT repo_id FROM repo WHERE repo_group_id=:repo_group_id)
+        """)
+    else:
+        pr_all_sql = s.sql.text("""
+        SELECT 
+            CAST(merged AS FLOAT) / NULLIF(CAST(closed AS FLOAT),0) AS ratio_merged_to_closed
+            FROM
+                (SELECT 
+                    repo_id, COUNT(pr_merged_at) AS merged  
+                    FROM augur_data.pull_requests
+                    WHERE pr_merged_at IS NOT NULL
+                    GROUP BY repo_id) a
+                INNER JOIN
+                (SELECT
+                    repo_id, COUNT(pr_closed_at) AS closed
+                    FROM augur_data.pull_requests
+                    WHERE pr_merged_at IS NULL
+                    GROUP BY repo_id) b
+                ON a.repo_id = b.repo_id
+        WHERE a.repo_id = :repo_id
+        """)
+
+    pr_all = pd.read_sql(pr_all_sql,
+                         engine,
+                         params={'repo_group_id': repo_group_id, 'repo_id': repo_id}
+                         )
+
+    return pr_all
 
 
 

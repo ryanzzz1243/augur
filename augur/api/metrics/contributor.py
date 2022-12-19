@@ -459,3 +459,61 @@ def contributors_code_development(repo_group_id, repo_id=None, period='all', beg
         results = pd.read_sql(contributorsSQL, engine, params={'repo_group_id': repo_group_id, 'period': period,
                                                                 'begin_date': begin_date, 'end_date': end_date})
     return results
+
+@register_metric()
+def sustained_contributors(repo_group_id, repo_id=None, period='day', begin_date=None, end_date=None):
+    """
+    Returns a list of contributors who contributed to the project more than once, as well as their commit counts.
+    
+    :param repo_id: The repository's id
+    :param repo_group_id: The repository's group id
+    :param period: To set the periodicity to 'day', 'week', 'month' or 'year', defaults to 'day'
+    :param begin_date: Specifies the begin date, defaults to '1970-1-1 00:00:00'
+    :param end_date: Specifies the end date, defaults to datetime.now()
+    :return: DataFrame of constributors and commits
+    """
+
+    if not begin_date:
+        begin_date = '1970-1-1 00:00:01'
+    if not end_date:
+        end_date = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+
+    if repo_id:
+        sustained = s.sql.text("""
+            SELECT * FROM
+                (SELECT 
+                cmt_author_email AS sustained_cntrb_email,
+                COUNT(cmt_id) AS total_contributions
+                FROM commits
+                WHERE repo_id = :repo_id
+                AND (cmt_author_email = '') IS NOT TRUE
+                AND cmt_author_date IS NOT NULL
+                AND cmt_author_date > :begin_date
+                AND cmt_author_date < :end_date
+                GROUP BY cmt_author_email) a
+                WHERE total_contributions > 1;
+
+        """)
+
+        results = pd.read_sql(sustained, engine, params={'repo_id': repo_id, 'period': period,
+                                                                'begin_date': begin_date, 'end_date': end_date})
+    else:
+        sustained = s.sql.text("""
+            SELECT * FROM
+                (SELECT 
+                repo_id, cmt_author_email AS sustained_cntrb_email,
+                COUNT(cmt_id) AS total_contributions
+                FROM commits
+                WHERE repo_id IN
+                    (SELECT repo_id FROM repo WHERE repo_group_id = :repo_group_id)
+                AND (cmt_author_email = '') IS NOT TRUE
+                AND cmt_author_date IS NOT NULL
+                AND cmt_author_date > :begin_date
+                AND cmt_author_date < :end_date
+                GROUP BY repo_id, cmt_author_email) a
+                WHERE total_contributions > 1;
+        """)
+
+        results = pd.read_sql(sustained, engine, params={'repo_group_id': repo_group_id, 'period': period,
+                                                                'begin_date': begin_date, 'end_date': end_date})
+    return results
